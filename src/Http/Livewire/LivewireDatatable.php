@@ -78,7 +78,15 @@ class LivewireDatatable extends Component
     public $groupLabels = [];
 
     protected $query;
-    protected $listeners = ['refreshLivewireDatatable', 'complexQuery', 'saveQuery', 'deleteQuery', 'applyToTable', 'resetTable'];
+    protected $listeners = [
+        'refreshLivewireDatatable',
+        'complexQuery',
+        'saveQuery',
+        'deleteQuery',
+        'applyToTable',
+        'resetTable',
+        'doTextFilter',
+    ];
 
     protected $operators = [
         '=' => '=',
@@ -132,6 +140,8 @@ class LivewireDatatable extends Component
                 $this->$property = $options[$property];
             }
         }
+
+        $this->setSessionStoredFilters();
     }
 
     /**
@@ -199,6 +209,7 @@ class LivewireDatatable extends Component
     {
         return collect($this->freshColumns)->map(function ($column) {
             return collect($column)->only([
+                'index',
                 'hidden',
                 'label',
                 'group',
@@ -511,8 +522,20 @@ class LivewireDatatable extends Component
                 'date' => $this->activeDateFilters,
                 'time' => $this->activeTimeFilters,
                 'number' => $this->activeNumberFilters,
+                'search' => $this->search,
             ],
         ]);
+    }
+
+    public function setSessionStoredHidden()
+    {
+        if (! $this->persistHiddenColumns) {
+            return;
+        }
+
+        $hidden = collect($this->columns)->filter->hidden->keys()->toArray();
+
+        session()->put([$this->sessionStorageKey() . $this->name . '_hidden_columns' => $hidden]);
     }
 
     public function initialiseSort()
@@ -574,6 +597,10 @@ class LivewireDatatable extends Component
         $this->activeDateFilters = $filters['date'] ?? [];
         $this->activeTimeFilters = $filters['time'] ?? [];
         $this->activeNumberFilters = $filters['number'] ?? [];
+
+        if (isset($filters['search'])) {
+            $this->search = $filters['search'];
+        }
     }
 
     public function defaultSort()
@@ -696,20 +723,38 @@ class LivewireDatatable extends Component
 
         $this->columns[$index]['hidden'] = ! $this->columns[$index]['hidden'];
 
-        if ($this->persistHiddenColumns) {
-            $hidden = collect($this->columns)->filter->hidden->keys()->toArray();
-
-            session()->put([$this->sessionStorageKey() . $this->name . '_hidden_columns' => $hidden]);
-        }
+        $this->setSessionStoredHidden();
     }
 
     public function toggleGroup($group)
     {
+        if ($this->isGroupVisible($group)) {
+            $this->hideGroup($group);
+        } else {
+            $this->showGroup($group);
+        }
+    }
+
+    public function showGroup($group)
+    {
         foreach ($this->columns as $key => $column) {
             if ($column['group'] === $group) {
-                $this->toggle($key);
+                $this->columns[$key]['hidden'] = false;
             }
         }
+
+        $this->setSessionStoredHidden();
+    }
+
+    public function hideGroup($group)
+    {
+        foreach ($this->columns as $key => $column) {
+            if ($column['group'] === $group) {
+                $this->columns[$key]['hidden'] = true;
+            }
+        }
+
+        $this->setSessionStoredHidden();
     }
 
     /**
